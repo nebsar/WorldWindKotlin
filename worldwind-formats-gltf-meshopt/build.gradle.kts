@@ -53,7 +53,11 @@ val androidNdkInstalled = sdkDir.orNull?.let { sdk ->
 val jvmNativeOptIn = providers.gradleProperty("worldwind.meshopt.buildJvmNative").orNull == "true"
 val cmakeOnPath = providers.exec {
     isIgnoreExitValue = true
-    commandLine("sh", "-c", "command -v cmake")
+    if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
+        commandLine("cmd", "/c", "where cmake")
+    } else {
+        commandLine("sh", "-c", "command -v cmake")
+    }
 }.result.get().exitValue == 0
 
 fun KotlinNativeTarget.setupIosMeshoptCinterop(

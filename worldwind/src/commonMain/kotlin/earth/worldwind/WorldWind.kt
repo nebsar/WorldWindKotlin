@@ -119,6 +119,10 @@ open class WorldWind @JvmOverloads constructor(
      */
     var farDistanceLimit = 0.0
     /**
+     * Artificial restriction of near distance. Applied only if automatically calculated distance is smaller.
+     */
+    var nearDistanceLimit = 0.0
+    /**
      * Context related to frame rendering phase
      */
     protected val rc = RenderContext()
@@ -177,6 +181,7 @@ open class WorldWind @JvmOverloads constructor(
 
         // Set the WorldWindow's depth bits.
         depthBits = dc.gl.getParameteri(GL_DEPTH_BITS)
+        Logger.logMessage(Logger.INFO, "WorldWind", "setupDrawContext", "Depth bits: $depthBits")
     }
 
     /**
@@ -758,7 +763,9 @@ open class WorldWind @JvmOverloads constructor(
 
         //The near distance is set to a large value that does not clip the globe's surface.
         val maxDepthValue = (1 shl depthBits) - 1
-        val farResolution = 10.0
+        // When a near distance limit is set (e.g. for HUD mode), we loosen the far resolution
+        // requirement to allow the near plane to move closer without destroying depth precision.
+        val farResolution = if (nearDistanceLimit > 0.0) 500.0 else 10.0
         var near = far / (maxDepthValue / (1 - farResolution / far) - maxDepthValue + 1)
 
         // Prevent the near clip plane from intersecting the terrain.
@@ -770,7 +777,13 @@ open class WorldWind @JvmOverloads constructor(
             val maxNearDistance = distanceToSurface / (2 * sqrt(2 * tanHalfFov * tanHalfFov + 1))
             if (near > maxNearDistance) near = maxNearDistance
         }
-        if (near < 1) near = 1.0
+        
+        // Apply the artificial restriction if requested.
+        if (nearDistanceLimit > 0.0) {
+            if (near > nearDistanceLimit) near = nearDistanceLimit
+        }
+        
+        if (near < 1.0) near = 1.0
 
         // Compute a perspective projection matrix given the WorldWindow's viewport, field of view, and clip distances.
         projection.setToPerspectiveProjection(viewport.width, viewport.height, camera.fieldOfView, near, far)

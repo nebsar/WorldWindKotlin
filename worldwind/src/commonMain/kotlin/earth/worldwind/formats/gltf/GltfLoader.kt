@@ -98,13 +98,28 @@ class GltfLoader(val position: Position) {
     suspend fun parse(rrc: RenderResourceCache): GltfScene {
         val a = requireNotNull(asset) { "GltfLoader.parse(rrc) requires AssetResource constructor" }
         val data = suspendCancellableCoroutine { cont -> rrc.retrieveTextAsset(a) { cont.resume(it) } }
-        return parse(data)
+        return parse(data) // text only (.gltf). For .glb use parse(bytes: ByteArray)
     }
 
-    fun parse(data: String): GltfScene {
+    /**
+     * Parse raw file bytes. Accepts either a binary GLB (starts with "glTF") or a
+     * plain-text .gltf JSON file. Use this for .glb assets — reading them as a String corrupts them.
+     */
+    fun parse(bytes: ByteArray): GltfScene {
+        val isGlb = bytes.size >= 4 && bytes[0] == 'g'.code.toByte() && bytes[1] == 'l'.code.toByte() &&
+                bytes[2] == 'T'.code.toByte() && bytes[3] == 'F'.code.toByte()
+        return if (isGlb) {
+            val glb = GlbReader.parse(bytes)
+            parse(glb.jsonText, glb.binChunk)
+        } else parse(bytes.decodeToString(), null)
+    }
+
+    fun parse(data: String): GltfScene = parse(data, null)
+
+    private fun parse(data: String, glbBin: ByteArray?): GltfScene {
         val json = Json { ignoreUnknownKeys = true; isLenient = true }
-        val doc = json.decodeFromString<GltfDoc>(data)
-        val rawBuffers = doc.buffers.map { decodeBuffer(it) }
+        val doc = json.decodeFromString<GltfDoc>(data.trimStart('\uFEFF'))
+        val rawBuffers = doc.buffers.map { decodeBuffer(it, glbBin) }
         val entities = mutableListOf<GltfEntity>()
         val rootScene = doc.scenes.getOrNull(doc.scene) ?: DocScene()
         for (nodeIdx in rootScene.nodes) traverseNode(doc, rawBuffers, nodeIdx, null, entities)
@@ -112,8 +127,10 @@ class GltfLoader(val position: Position) {
     }
 
     @OptIn(ExperimentalEncodingApi::class)
-    private fun decodeBuffer(buf: DocBuffer): ByteArray {
+    private fun decodeBuffer(buf: DocBuffer, glbBin: ByteArray?): ByteArray {
         val uri = buf.uri
+        // GLB: a buffer without a uri is the embedded BIN chunk
+        if (uri.isEmpty() && glbBin != null) return glbBin
         if (uri.startsWith("data:")) {
             val commaIdx = uri.indexOf(',')
             if (commaIdx >= 0) return Base64.decode(uri, commaIdx + 1)

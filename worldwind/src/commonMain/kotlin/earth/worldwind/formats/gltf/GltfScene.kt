@@ -42,6 +42,7 @@ class GltfScene internal constructor(
         set(value) { field = value; invalidate() }
     var scale = 1.0
         set(value) { field = value; invalidate() }
+
     /**
      * Cast/receive selector for cascaded sun shadows. Default [ShadowMode.ENABLED] = scene
      * both casts and receives. Common opt-out: [ShadowMode.RECEIVE_ONLY] for HUD-style or
@@ -64,6 +65,24 @@ class GltfScene internal constructor(
 
     private fun invalidate() { transformValid = false }
 
+    /**
+     * Moves/orients the model in one call, writing the fields directly (no property setters).
+     * Safe to call every telemetry tick; the placement is rebuilt on the next frame.
+     * [headingDeg]/[pitchDeg]/[rollDeg] are degrees.
+     */
+    fun updatePlacement(
+        latitudeDeg: Double, longitudeDeg: Double, altitudeM: Double,
+        headingDeg: Double = heading, pitchDeg: Double = pitch, rollDeg: Double = roll
+    ) {
+        position.latitude = latitudeDeg.degrees
+        position.longitude = longitudeDeg.degrees
+        position.altitude = altitudeM
+        heading = headingDeg
+        pitch = pitchDeg
+        roll = rollDeg
+        invalidate()
+    }
+
     override fun doRender(rc: RenderContext) {
         rc.geographicToCartesian(position.latitude, position.longitude, position.altitude, altitudeMode, placePoint)
         // Bounding-sphere cull, not centerpoint cull: in pick mode the frustum is the pick rect
@@ -76,15 +95,15 @@ class GltfScene internal constructor(
         // reach visible ground; the color draw is skipped via [DrawableCollada.isOccluderOnly].
         val cameraVisible = boundingSphere.intersectsFrustum(rc.frustum)
         val occluderOnly = !cameraVisible && shadowMode.castsShadows &&
-            rc.intersectsShadowCasterRegion(boundingSphere.center, boundingSphere.radius)
+                rc.intersectsShadowCasterRegion(boundingSphere.center, boundingSphere.radius)
         if (!cameraVisible && !occluderOnly) return
 
         val distanceSq = rc.cameraPoint.distanceToSquared(placePoint)
 
-        if (!transformValid) {
-            buildTransformationMatrix(rc)
-            transformValid = true
-        }
+        // Rebuilt every frame (a handful of matrix ops) so the placement can never go stale,
+        // e.g. when the position is updated continuously from telemetry.
+        buildTransformationMatrix(rc)
+        transformValid = true
 
         val program = BasicTextureProgram.get(rc)
 
@@ -221,10 +240,25 @@ class GltfScene internal constructor(
     }
 
     private fun buildTransformationMatrix(rc: RenderContext) {
-        rc.globe.geographicToCartesianTransform(position.latitude, position.longitude, position.altitude, transformationMatrix)
-        transformationMatrix.multiplyByRotation(0.0, 0.0, 1.0, heading.degrees)
-        transformationMatrix.multiplyByRotation(1.0, 0.0, 0.0, pitch.degrees)
+        // Orient at the position on the globe, then take the translation from placePoint, which
+        // rc.geographicToCartesian already resolved with [altitudeMode] (ABSOLUTE / RELATIVE_TO_GROUND /
+        // CLAMP_TO_GROUND). Passing position.altitude straight to geographicToCartesianTransform
+        // ignored altitudeMode entirely.
+        rc.globe.geographicToCartesianTransform(position.latitude, position.longitude, 0.0, transformationMatrix)
+        transformationMatrix.m[3] = placePoint.x
+        transformationMatrix.m[7] = placePoint.y
+        transformationMatrix.m[11] = placePoint.z
+        // Aircraft attitude in the local East-North-Up frame (nose = +Y, right wing = +X, up = +Z):
+        // heading is clockwise from north (negate: +Z rotation is counter-clockwise), pitch is
+        // nose-up about +X, roll is right-wing-down about the nose (+Y).
+        transformationMatrix.multiplyByRotation(0.0, 0.0, 1.0, -heading.degrees)
         transformationMatrix.multiplyByRotation(0.0, 1.0, 0.0, roll.degrees)
+        transformationMatrix.multiplyByRotation(1.0, 0.0, 0.0, Angle.fromDegrees(pitch + 90.0))
+        // Fixed model correction, applied innermost so it never mixes with the attitude above:
+        // 1) yaw the model's authored nose direction onto north, 2) stand the glTF Y-up model up
+        // into the Z-up local frame.
+//        transformationMatrix.multiplyByRotation(0.0, 0.0, 1.0, modelYawOffset.degrees)
+//        transformationMatrix.multiplyByRotation(1.0, 0.0, 0.0, 90.0.degrees)
         transformationMatrix.multiplyByScale(scale, scale, scale)
 
         val rx = atan2(transformationMatrix.m[6], transformationMatrix.m[10]).radians

@@ -2,10 +2,12 @@ package earth.worldwind.layer
 
 import earth.worldwind.MR
 import earth.worldwind.WorldWind
+import earth.worldwind.geom.AltitudeMode
 import earth.worldwind.geom.Angle.Companion.degrees
 import earth.worldwind.geom.LookAt
 import earth.worldwind.geom.Offset
 import earth.worldwind.geom.OffsetMode
+import earth.worldwind.geom.Position
 import earth.worldwind.render.RenderContext
 import earth.worldwind.render.image.ImageSource
 import earth.worldwind.shape.ScreenImage
@@ -43,6 +45,13 @@ class ViewControlsLayer(
     var tiltIncrement = 1.0
     var exaggerationIncrement = 0.01
     var fovIncrement = 0.1
+
+    /**
+     * Optional pivot for the heading/tilt/zoom buttons. When it returns a position, those buttons
+     * orbit/zoom around that point (e.g. a followed vehicle) instead of the terrain point under
+     * the screen centre, and the pan button is ignored. Return null for normal behaviour.
+     */
+    var pivotProvider: (() -> Position?)? = null
 
     enum class Action { PAN, ZOOM_IN, ZOOM_OUT, HEADING_LEFT, HEADING_RIGHT, TILT_UP, TILT_DOWN, EXAGGERATION_UP, EXAGGERATION_DOWN, FOV_NARROW, FOV_WIDE }
 
@@ -127,9 +136,10 @@ class ViewControlsLayer(
             Action.FOV_WIDE -> engine.camera.fieldOfView = min(120.0, engine.camera.fieldOfView.inDegrees + fovIncrement).degrees
             else -> {
                 val lookAt = LookAt()
-                engine.cameraAsLookAt(lookAt)
+                val pivot = pivotProvider?.invoke()
+                if (pivot != null) engine.cameraAsLookAt(lookAt, pivot) else engine.cameraAsLookAt(lookAt)
                 when (hit.action) {
-                    Action.PAN -> {
+                    Action.PAN -> if (pivot == null) {
                         val dx = panCenterX - x
                         val dy = panCenterY - glY
                         val heading = lookAt.heading.inDegrees + atan2(dx, dy) * (180.0 / PI)
@@ -143,6 +153,10 @@ class ViewControlsLayer(
                     Action.HEADING_RIGHT -> lookAt.heading = (lookAt.heading.inDegrees + headingIncrement).degrees
                     Action.TILT_UP -> lookAt.tilt = min(90.0, lookAt.tilt.inDegrees + tiltIncrement).degrees
                     Action.TILT_DOWN -> lookAt.tilt = max(0.0, lookAt.tilt.inDegrees - tiltIncrement).degrees
+                }
+                if (pivot != null) {
+                    lookAt.position.copy(pivot)
+                    lookAt.altitudeMode = AltitudeMode.ABSOLUTE
                 }
                 engine.cameraFromLookAt(lookAt)
             }

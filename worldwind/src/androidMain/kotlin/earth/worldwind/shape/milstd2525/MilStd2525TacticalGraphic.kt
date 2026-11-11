@@ -31,8 +31,21 @@ actual open class MilStd2525TacticalGraphic @JvmOverloads actual constructor(
     }
 
     fun setAnchorLocations(locations: List<Location>) {
-        if (this::controlPoints.isInitialized) controlPoints.clear() else controlPoints = ArrayList()
-        for (location in locations) controlPoints.add(Point2D.Double(location.longitude.inDegrees, location.latitude.inDegrees))
+        if (this::controlPoints.isInitialized) {
+            controlPoints.clear()
+        } else {
+            controlPoints = ArrayList()
+        }
+
+        for (location in locations) {
+            controlPoints.add(
+                Point2D.Double(
+                    location.longitude.inDegrees,
+                    location.latitude.inDegrees
+                )
+            )
+        }
+
         var left = controlPoints[0].x
         var top = controlPoints[0].y
         var right = controlPoints[0].x
@@ -45,6 +58,7 @@ actual open class MilStd2525TacticalGraphic @JvmOverloads actual constructor(
             if (pt.y > top) top = pt.y
             if (pt.y < bottom) bottom = pt.y
         }
+
         if (right - left > 180.0) {
             left = controlPoints[0].x
             for (i in 1 until controlPoints.size) {
@@ -52,12 +66,18 @@ actual open class MilStd2525TacticalGraphic @JvmOverloads actual constructor(
                 if (pt.x > 0.0 && pt.x < left) left = pt.x
             }
         }
-        if (this::pointUL.isInitialized) pointUL.setLocation(left, top) else pointUL = Point2D.Double(left, top)
+
+        if (this::pointUL.isInitialized) {
+            pointUL.setLocation(left, top)
+        } else {
+            pointUL = Point2D.Double(left, top)
+        }
         reset()
     }
 
     actual override fun makeRenderables(rc: RenderContext, scale: Double): List<Renderable> {
-        val ipc = PointConverter3D(pointUL.x, pointUL.y, scale * 160.0 * rc.densityFactor * 39.3700787)
+        val ipc =
+            PointConverter3D(pointUL.x, pointUL.y, scale * 160.0 * rc.densityFactor * 39.3700787)
 
 //        // Calculate clipping rectangle
 //        val leftTop = ipc.GeoToPixels(Point2D.Double(boundingSector.minLongitude.degrees, boundingSector.maxLatitude.degrees))
@@ -74,6 +94,7 @@ actual open class MilStd2525TacticalGraphic @JvmOverloads actual constructor(
                     val elements = value.split(",")
                     for (j in elements.indices) mss.setModifier(modifierKey, elements[j], j)
                 }
+
                 else -> mss.setModifier(modifierKey, value)
             }
         }
@@ -81,20 +102,34 @@ actual open class MilStd2525TacticalGraphic @JvmOverloads actual constructor(
             get(MilStdAttributes.AltitudeMode)?.let { mss.altitudeMode = it }
             DistanceUnit.parse(get(MilStdAttributes.AltitudeUnits))?.let { mss.altitudeUnit = it }
             DistanceUnit.parse(get(MilStdAttributes.DistanceUnits))?.let { mss.distanceUnit = it }
-            get(MilStdAttributes.LineWidth)?.toFloatOrNull()?.let { mss.lineWidth = (it * rc.densityFactor).roundToInt() }
+            get(MilStdAttributes.LineWidth)?.toFloatOrNull()
+                ?.let { mss.lineWidth = (it * rc.densityFactor).roundToInt() }
         }
         clsRenderer.renderWithPolylines(mss, ipc, null /*rect*/)
 
         // Create Renderables based on Poly-lines and Modifiers from Renderer
         val shapes = mutableListOf<Renderable>()
         val outlines = mutableListOf<Renderable>()
-        for (i in mss.symbolShapes.indices) convertShapeToRenderables(mss.symbolShapes[i], ipc, shapes, outlines)
-        for (i in mss.modifierShapes.indices) convertShapeToRenderables(mss.modifierShapes[i], ipc, shapes, outlines)
+        for (i in mss.symbolShapes.indices) convertShapeToRenderables(
+            mss.symbolShapes[i],
+            ipc,
+            shapes,
+            outlines
+        )
+        for (i in mss.modifierShapes.indices) convertShapeToRenderables(
+            mss.modifierShapes[i],
+            ipc,
+            shapes,
+            outlines
+        )
         return outlines + shapes
     }
 
     protected open fun convertShapeToRenderables(
-        si: ShapeInfo, ipc: IPointConversion, shapes: MutableList<Renderable>, outlines: MutableList<Renderable>
+        si: ShapeInfo,
+        ipc: IPointConversion,
+        shapes: MutableList<Renderable>,
+        outlines: MutableList<Renderable>
     ) {
         when (si.shapeType) {
             ShapeInfo.SHAPE_TYPE_POLYLINE -> {
@@ -105,17 +140,22 @@ actual open class MilStd2525TacticalGraphic @JvmOverloads actual constructor(
                     si.patternFillImage?.let { interiorImageSource = ImageSource.fromBitmap(it) }
                     isPickInterior = false // Allow picking outline only
                     val dash = si.stroke.dashArray
-                    if (dash != null && dash.isNotEmpty()) outlineImageSource = ImageSource.fromLineStipple(
-                        // TODO How to correctly interpret dash array?
-                        factor = dash[0].toInt(), pattern = 0xF0F0.toShort()
-                    )
+                    if (dash != null && dash.isNotEmpty()) outlineImageSource =
+                        ImageSource.fromLineStipple(
+                            // TODO How to correctly interpret dash array?
+                            factor = dash[0].toInt(), pattern = 0xF0F0.toShort()
+                        )
                 }
-                val enclosed = si.shapeType == ShapeInfo.SHAPE_TYPE_FILL || si.patternFillImage != null
-                val hasOutline = graphicsOutlineWidth != 0f && (isHighlighted || !isOutlineHighlightedOnly)
+                val enclosed =
+                    si.shapeType == ShapeInfo.SHAPE_TYPE_FILL || si.patternFillImage != null
+                val hasOutline =
+                    graphicsOutlineWidth != 0f && (isHighlighted || !isOutlineHighlightedOnly)
                 val outlineAttributes = if (hasOutline) ShapeAttributes(shapeAttributes).apply {
                     si.lineColor?.let {
                         outlineColor = graphicsOutlineColor
-                            ?: Color(RendererUtilities.getIdealOutlineColor(it).toARGB()).apply { alpha = 0.5f }
+                            ?: Color(
+                                RendererUtilities.getIdealOutlineColor(it).toARGB()
+                            ).apply { alpha = 0.5f }
                     }
                     outlineWidth += graphicsOutlineWidth * 2f
                 } else shapeAttributes
@@ -143,7 +183,12 @@ actual open class MilStd2525TacticalGraphic @JvmOverloads actual constructor(
                 val position = Position.fromDegrees(point.y, point.x, 0.0)
                 sector.union(position) // Extend bounding box by real graphics measures
                 val imageSource = ImageSource.fromBitmap(image)
-                shapes += createPlacemark(position, imageSource, si.modifierString, si.modifierAngle.degrees)
+                shapes += createPlacemark(
+                    position,
+                    imageSource,
+                    si.modifierString,
+                    si.modifierAngle.degrees
+                )
             } ?: run {
                 val rs = RendererSettings.getInstance()
                 val textAttributes = TextAttributes().apply {
@@ -160,10 +205,20 @@ actual open class MilStd2525TacticalGraphic @JvmOverloads actual constructor(
                 val point = ipc.PixelsToGeo(si.modifierPosition ?: si.glyphPosition ?: return)
                 val position = Position.fromDegrees(point.y, point.x, 0.0)
                 sector.union(position) // Extend bounding box by real graphics measures
-                shapes += createLabel(position, textAttributes, si.modifierString, si.modifierAngle.degrees)
+                shapes += createLabel(
+                    position,
+                    textAttributes,
+                    si.modifierString,
+                    si.modifierAngle.degrees
+                )
             }
 
-            else -> Logger.logMessage(Logger.ERROR, "MilStd2525TacticalGraphic", "convertShapeToRenderables", "unknownShapeType")
+            else -> Logger.logMessage(
+                Logger.ERROR,
+                "MilStd2525TacticalGraphic",
+                "convertShapeToRenderables",
+                "unknownShapeType"
+            )
         }
     }
 }
