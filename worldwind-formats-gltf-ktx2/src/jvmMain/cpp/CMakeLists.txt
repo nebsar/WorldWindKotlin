@@ -3,14 +3,9 @@ project(ktx_bridge LANGUAGES C CXX)
 
 find_package(JNI REQUIRED)
 
-include(FetchContent)
-FetchContent_Declare(
-    ktx
-    GIT_REPOSITORY https://github.com/KhronosGroup/KTX-Software.git
-    GIT_TAG       v4.3.2
-    GIT_SHALLOW   TRUE
-)
-
+set(BUILD_SHARED_LIBS         OFF CACHE BOOL "" FORCE)
+set(KTX_FEATURE_STATIC_LIBRARY ON CACHE BOOL "" FORCE)
+set(KTX_BUILD_SHARED          OFF CACHE BOOL "" FORCE)
 set(KTX_FEATURE_TESTS         OFF CACHE BOOL "" FORCE)
 set(KTX_FEATURE_TOOLS         OFF CACHE BOOL "" FORCE)
 set(KTX_FEATURE_DOC           OFF CACHE BOOL "" FORCE)
@@ -20,12 +15,22 @@ set(KTX_FEATURE_VULKAN        OFF CACHE BOOL "" FORCE)
 # platform regardless of the toggle, and disabling it breaks the MSVC link with LNK2001.
 set(KTX_FEATURE_KTX1          ON  CACHE BOOL "" FORCE)
 set(KTX_FEATURE_KTX2          ON  CACHE BOOL "" FORCE)
-set(BUILD_SHARED_LIBS         OFF CACHE BOOL "" FORCE)
+
+include(FetchContent)
+FetchContent_Declare(
+    ktx
+    GIT_REPOSITORY https://github.com/KhronosGroup/KTX-Software.git
+    GIT_TAG       v4.3.2
+    GIT_SHALLOW   TRUE
+)
 
 # Linking a STATIC libktx into our SHARED libktx_bridge requires every libktx object to be
 # position-independent on ELF platforms — Android NDK defaults PIC on, but host JVM
 # toolchains (Linux GCC, macOS clang) don't. Set before FetchContent_MakeAvailable.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+if (MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
 # astc-encoder ships -ffp-model=precise + -ffp-contract=off; recent clang flags those as
 # conflicting and the subproject's -Werror promotes the warning. Downgrade only this class.
@@ -45,7 +50,7 @@ target_include_directories(ktx_bridge PRIVATE
     ${JNI_INCLUDE_DIRS}
     ${ktx_SOURCE_DIR}/include
 )
-target_link_libraries(ktx_bridge PRIVATE ktx)
+target_link_libraries(ktx_bridge PRIVATE ktx_read)
 
 set_target_properties(ktx_bridge PROPERTIES
     CXX_STANDARD 17

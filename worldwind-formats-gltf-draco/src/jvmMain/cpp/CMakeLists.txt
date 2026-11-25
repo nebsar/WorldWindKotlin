@@ -28,6 +28,9 @@ set(BUILD_SHARED_LIBS      OFF CACHE BOOL "" FORCE)
 # toolchains (Linux GCC, macOS clang) don't — set it explicitly before the FetchContent
 # subdirectory so it propagates to every Draco OBJECT/STATIC target.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+if (MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
 # Draco 1.5.7's CMakeLists still uses FindPythonInterp (removed in CMake 3.27); silence the
 # CMP0148 deprecation warning by forcing the policy default OLD across the subdirectory.
